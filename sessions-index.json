@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "e74c36a8-f0eb-411d-8733-cab0781e7f3e",
+      "summary": "阅读task2,目前的AUC只有0.56，如何提升？",
+      "assistantReply": "修复了：`roc_curve` 返回3个值而不是2个。\n\n```bash\ncd /home/student/First\\ try/task2_output && uv run python train_nsclc_v3_3.py 2>&1 | tee training_v3_3.log\n```",
+      "assistantThinking": "Good. `roc_curve` returns 3 values (fpr, tpr, thresholds), not 2. Fixed.\n\nRun again:\n```bash\ncd /home/student/First\\ try/task2_output && uv run python train_nsclc_v3_3.py 2>&1 | tee training_v3_3.log\n```",
+      "assistantRefusal": null,
+      "toolCalls": null,
+      "status": "completed",
+      "failReason": null,
+      "usage": {
+        "prompt_tokens": 31932131,
+        "completion_tokens": 135392,
+        "total_tokens": 32067523,
+        "prompt_tokens_details": {
+          "cached_tokens": 30857600
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 40590
+        },
+        "prompt_cache_hit_tokens": 30857600,
+        "prompt_cache_miss_tokens": 1074531
+      },
+      "usagePerModel": {
+        "deepseek-v4-pro": {
+          "prompt_tokens": 31932131,
+          "completion_tokens": 135392,
+          "total_tokens": 32067523,
+          "prompt_tokens_details": {
+            "cached_tokens": 30857600
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 40590
+          },
+          "prompt_cache_hit_tokens": 30857600,
+          "prompt_cache_miss_tokens": 1074531,
+          "total_reqs": 177
+        }
+      },
+      "activeTokens": 313215,
+      "createTime": "2026-07-09T11:02:02.423Z",
+      "updateTime": "2026-07-14T10:04:18.162Z",
+      "processes": null
+    },
+    {
+      "id": "c7881faa-71e8-4dd9-b91a-00db4e2109c5",
+      "summary": "阅读这个项目",
+      "assistantReply": "修复了。现在 `label.csv` 会保存到 `task1_output/label.csv`（程序目录，可写），而不是只读的数据目录。\n\n同时 `generate_heatmaps()` 已经改为直接扫描 `TRAIN/TEST` 目录搜索图像，完全不依赖 `label.csv` 文件。可以重新运行了。",
+      "assistantThinking": null,
+      "assistantRefusal": null,
+      "toolCalls": null,
+      "status": "completed",
+      "failReason": null,
+      "usage": {
+        "prompt_tokens": 23402738,
+        "completion_tokens": 76379,
+        "total_tokens": 23479117,
+        "prompt_tokens_details": {
+          "cached_tokens": 22631552
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 24094
+        },
+        "prompt_cache_hit_tokens": 22631552,
+        "prompt_cache_miss_tokens": 771186
+      },
+      "usagePerModel": {
+        "deepseek-v4-pro": {
+          "prompt_tokens": 23402738,
+          "completion_tokens": 76379,
+          "total_tokens": 23479117,
+          "prompt_tokens_details": {
+            "cached_tokens": 22631552
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 24094
+          },
+          "prompt_cache_hit_tokens": 22631552,
+          "prompt_cache_miss_tokens": 771186,
+          "total_reqs": 148
+        }
+      },
+      "activeTokens": 235474,
+      "createTime": "2026-07-04T07:25:37.146Z",
+      "updateTime": "2026-07-07T15:26:03.587Z",
+      "processes": null
+    }
+  ],
+  "originalPath": "/home/student/First try"
+}
