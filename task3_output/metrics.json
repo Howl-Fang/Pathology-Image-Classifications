@@ -1,6 +1,6 @@
 {
-  "Macro-AUC": NaN,
-  "Weighted-F1": 1.0,
-  "Macro-ACC": 1.0,
-  "ROC-AUC": NaN
+  "Macro-AUC": 0.5137174211248284,
+  "Weighted-F1": 0.8526315789473684,
+  "Macro-ACC": 0.9,
+  "ROC-AUC": 0.5137174211248284
 }

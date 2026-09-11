@@ -23,13 +23,41 @@ def normalize_text(value):
         return value
     return str(value).strip()
 
-# Try to import openslide, but fallback if not available
+# Try to import openslide, but raise a clear error if not available
 try:
     import openslide
     HAS_OPENSLIDE = True
 except ImportError:
     HAS_OPENSLIDE = False
-    print("Warning: openslide not available, will use image patches only")
+
+
+def check_wsi_accessibility(data_paths):
+    """Pre-flight check: verify OpenSlide and WSI files are accessible."""
+    if not HAS_OPENSLIDE:
+        print("=" * 60)
+        print("WARNING: OpenSlide is not installed!")
+        print("  WSI (.svs) files cannot be read without openslide-python.")
+        print("  The model will receive blank images and learn nothing.")
+        print()
+        print("  Install OpenSlide:")
+        print("    Ubuntu: sudo apt-get install libopenslide0")
+        print("    then:   pip install openslide-python")
+        print("=" * 60)
+        return False
+    
+    # Check if at least one WSI file is accessible
+    for path in data_paths:
+        if os.path.isdir(path):
+            for f in os.listdir(path):
+                if f.endswith('.svs'):
+                    return True
+    
+    print("=" * 60)
+    print("WARNING: No .svs files found in data directories!")
+    print(f"  Checked paths: {data_paths}")
+    print("  Without WSI files, training will use blank images.")
+    print("=" * 60)
+    return False
 
 class NSCLCDataset(Dataset):
     def __init__(self, df, data_path, transform=None, sample_size=5):
@@ -76,34 +104,109 @@ class NSCLCDataset(Dataset):
         
         return image, label, row['filename']
 
-def load_data(data_path):
-    """Load NSCLC dataset from TCGA"""
-    csv_path = os.path.join(data_path, 'TCGA', 'label.csv')
-    df = pd.read_csv(csv_path)
-    if 'label' in df.columns:
-        df['label'] = df['label'].map(normalize_text)
+def _scan_wsi_directory(wsi_dir):
+    """Scan a WSI directory and return list of .svs files."""
+    files = []
+    if os.path.isdir(wsi_dir):
+        for f in sorted(os.listdir(wsi_dir)):
+            if f.lower().endswith(('.svs', '.mrxs', '.tiff', '.tif', '.ndpi')):
+                files.append(f)
+    return files
+
+
+def _generate_label_template(csv_path, wsi_dir, dataset_name):
+    """Generate a label.csv template from WSI directory listing."""
+    files = _scan_wsi_directory(wsi_dir)
+    if not files:
+        return None
     
-    # Filter valid classes
+    df = pd.DataFrame({
+        'filename': files,
+        'label': 'UNKNOWN'
+    })
+    df.to_csv(csv_path, index=False)
+    print(f"\nGenerated label template: {csv_path}")
+    print(f"  Found {len(files)} WSI files in {wsi_dir}")
+    print(f"  Please edit {csv_path} and replace 'UNKNOWN' with 'LUAD' or 'LUSC'")
+    return df
+
+
+def _normalize_nsclc_csv(df, csv_path):
+    """Auto-detect and normalize NSCLC CSV columns: class→label, slide→filename."""
+    print(f"CSV columns: {list(df.columns)}")
+    
+    for candidate in ['class', 'Class', 'label', 'Label', 'category']:
+        if candidate in df.columns:
+            if candidate != 'label':
+                df['label'] = df[candidate].map(normalize_text)
+                print(f"  Mapped '{candidate}' → 'label'")
+            else:
+                df['label'] = df['label'].map(normalize_text)
+            break
+    else:
+        raise ValueError(f"Cannot find label column in {csv_path}. Columns: {list(df.columns)}")
+    
+    for candidate in ['slide', 'Slide', 'filename', 'file_name', 'id', 'name']:
+        if candidate in df.columns:
+            if candidate != 'filename':
+                df['filename'] = df[candidate]
+                print(f"  Mapped '{candidate}' → 'filename'")
+            break
+    
+    return df
+
+
+def load_data(data_path):
+    """Load NSCLC dataset from TCGA (TCGA_NSCLC.csv)"""
+    csv_path = os.path.join(data_path, 'TCGA', 'TCGA_NSCLC.csv')
+    wsi_dir = os.path.join(data_path, 'TCGA', 'WSIs')
+    
+    if not os.path.exists(csv_path):
+        print(f"WARNING: {csv_path} not found!")
+        df = _generate_label_template(csv_path, wsi_dir, 'TCGA')
+        if df is not None:
+            raise FileNotFoundError(
+                f"Label template generated at {csv_path}.\n"
+                f"Please edit it to set correct LUAD/LUSC labels, then re-run."
+            )
+        else:
+            raise FileNotFoundError(
+                f"No label CSV and no WSI files found in {wsi_dir}."
+            )
+    
+    df = pd.read_csv(csv_path)
+    df = _normalize_nsclc_csv(df, csv_path)
     df = df[df['label'].isin(['LUAD', 'LUSC'])].reset_index(drop=True)
     
     print(f"Total TCGA samples: {len(df)}")
     print(f"Class distribution:\n{df['label'].value_counts()}")
-    
     return df
 
+
 def load_nanfang_data(data_path):
-    """Load Nanfang test dataset"""
-    csv_path = os.path.join(data_path, 'Nanfang', 'label.csv')
-    df = pd.read_csv(csv_path)
-    if 'label' in df.columns:
-        df['label'] = df['label'].map(normalize_text)
+    """Load Nanfang test dataset (Nanfang_lung_NSCLC_VALID.csv)"""
+    csv_path = os.path.join(data_path, 'Nanfang', 'Nanfang_lung_NSCLC_VALID.csv')
+    wsi_dir = os.path.join(data_path, 'Nanfang', 'WSIs')
     
-    # Filter valid classes
+    if not os.path.exists(csv_path):
+        print(f"WARNING: {csv_path} not found!")
+        df = _generate_label_template(csv_path, wsi_dir, 'Nanfang')
+        if df is not None:
+            raise FileNotFoundError(
+                f"Label template generated at {csv_path}.\n"
+                f"Please edit it to set correct LUAD/LUSC labels, then re-run."
+            )
+        else:
+            raise FileNotFoundError(
+                f"No label CSV and no WSI files found in {wsi_dir}."
+            )
+    
+    df = pd.read_csv(csv_path)
+    df = _normalize_nsclc_csv(df, csv_path)
     df = df[df['label'].isin(['LUAD', 'LUSC'])].reset_index(drop=True)
     
     print(f"Total Nanfang samples: {len(df)}")
     print(f"Class distribution:\n{df['label'].value_counts()}")
-    
     return df
 
 def create_dataloaders(train_df, nanfang_df, train_data_path, nanfang_data_path, batch_size=32):
@@ -250,13 +353,22 @@ def test_model(model, test_loader, device):
     all_logits = np.array(all_logits)
     all_labels = np.array(all_labels)
     
-    # Calculate metrics
-    macro_auc = roc_auc_score(all_labels, all_logits[:, 1])
+    n_unique_labels = len(np.unique(all_labels))
+    
+    # Calculate metrics (with NaN safety for single-class case)
+    if n_unique_labels >= 2:
+        macro_auc = roc_auc_score(all_labels, all_logits[:, 1])
+        fpr, tpr, _ = roc_curve(all_labels, all_logits[:, 1])
+        roc_auc = auc(fpr, tpr)
+    else:
+        print(f"WARNING: Only {n_unique_labels} class(es) in test set, cannot compute AUC metrics.")
+        macro_auc = float('nan')
+        fpr, tpr = None, None
+        roc_auc = float('nan')
+    
     weighted_f1 = f1_score(all_labels, all_preds, average='weighted')
     macro_acc = accuracy_score(all_labels, all_preds)
     cm = confusion_matrix(all_labels, all_preds)
-    fpr, tpr, _ = roc_curve(all_labels, all_logits[:, 1])
-    roc_auc = auc(fpr, tpr)
     
     metrics = {
         'Macro-AUC': macro_auc,
@@ -290,19 +402,22 @@ def test_model(model, test_loader, device):
     plt.savefig('confusion_matrix.png', dpi=300)
     print("Confusion matrix saved to confusion_matrix.png")
     
-    # Plot ROC curve
-    plt.figure(figsize=(8, 6))
-    plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc:.4f})')
-    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Random Classifier')
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC Curve - NSCLC LUAD vs LUSC')
-    plt.legend(loc="lower right")
-    plt.tight_layout()
-    plt.savefig('roc_curve.png', dpi=300)
-    print("ROC curve saved to roc_curve.png")
+    # Plot ROC curve (only if both classes present)
+    if fpr is not None and tpr is not None:
+        plt.figure(figsize=(8, 6))
+        plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc:.4f})')
+        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Random Classifier')
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('ROC Curve - NSCLC LUAD vs LUSC')
+        plt.legend(loc="lower right")
+        plt.tight_layout()
+        plt.savefig('roc_curve.png', dpi=300)
+        print("ROC curve saved to roc_curve.png")
+    else:
+        print("Skipping ROC curve: only one class present in test set.")
     
     return metrics, all_logits, all_labels, all_paths, cm, fpr, tpr
 
@@ -311,6 +426,13 @@ def main():
     print(f"Using device: {device}")
     
     base_path = '/jhcnas7/Pathology/PathLab_data_collection/Data/NSCLC'
+    
+    # Pre-flight check: verify WSI accessibility
+    wsi_dirs = [
+        os.path.join(base_path, 'TCGA', 'WSIs'),
+        os.path.join(base_path, 'Nanfang', 'WSIs'),
+    ]
+    check_wsi_accessibility(wsi_dirs)
     
     # Load data
     print("Loading TCGA training data...")
@@ -338,9 +460,14 @@ def main():
     print("\nTesting model on Nanfang...")
     metrics, all_logits, all_labels, all_paths, cm, fpr, tpr = test_model(model, test_loader, device)
     
-    # Save metrics
+    # Save metrics (handle NaN values for JSON compliance)
+    import math
+    safe_metrics = {}
+    for k, v in metrics.items():
+        val = float(v)
+        safe_metrics[k] = None if math.isnan(val) else val
     with open('metrics.json', 'w') as f:
-        json.dump({k: float(v) for k, v in metrics.items()}, f, indent=2)
+        json.dump(safe_metrics, f, indent=2)
     
     print("\n✓ Task 2 completed!")
 

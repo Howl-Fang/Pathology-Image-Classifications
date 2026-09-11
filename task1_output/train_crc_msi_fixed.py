@@ -98,15 +98,34 @@ def load_data(data_path):
             )
         df = pd.DataFrame(records)
     
+    # Diagnostic: print unique class values BEFORE filtering
+    unique_classes_before = sorted(df['class'].dropna().unique())
+    print(f"Unique classes found in data (before filter): {unique_classes_before}")
+    
     # Filter to only MSIH and NonMSIH
     df = df[df['class'].isin(['MSIH', 'NonMSIH'])].reset_index(drop=True)
     
-    print(f"Total samples: {len(df)}")
+    print(f"Total samples after filtering: {len(df)}")
     print(f"Class distribution:\n{df['class'].value_counts()}")
 
     if df['class'].nunique() < 2:
+        print("\n" + "=" * 60)
+        print("ERROR: Only one class found in the dataset!")
+        print(f"  Found classes: {list(df['class'].unique())}")
+        print(f"  Classes in label.csv (before filter): {unique_classes_before}")
+        print("  Expected classes: MSIH, NonMSIH")
+        print()
+        print("  Possible causes:")
+        print("  1. label.csv may use different naming (e.g., 'MSS', 'MSI-L', 'non-msih')")
+        print("  2. The data directory may be missing NonMSIH samples")
+        print("  3. The CSV 'class' column may have formatting issues")
+        print()
+        print("  Suggested fix: check the label.csv file and ensure both")
+        print("  'MSIH' and 'NonMSIH' labels are present.")
+        print("=" * 60)
         raise ValueError(
-            "CRC-MSI labels collapsed to a single class after normalization."
+            f"CRC-MSI labels collapsed to a single class: {list(df['class'].unique())}. "
+            f"CSV contains: {unique_classes_before}"
         )
     
     return df, data_path
@@ -262,8 +281,18 @@ def test_model(model, test_loader, test_df, device):
     all_logits = np.array(all_logits)
     all_labels = np.array(all_labels)
     
-    # Macro-AUC
-    macro_auc = roc_auc_score(all_labels, all_logits[:, 1])
+    n_unique_labels = len(np.unique(all_labels))
+    
+    # Macro-AUC (requires both classes to be present)
+    if n_unique_labels >= 2:
+        macro_auc = roc_auc_score(all_labels, all_logits[:, 1])
+        fpr, tpr, _ = roc_curve(all_labels, all_logits[:, 1])
+        roc_auc = auc(fpr, tpr)
+    else:
+        print(f"WARNING: Only {n_unique_labels} class(es) in test set, cannot compute AUC metrics.")
+        macro_auc = float('nan')
+        fpr, tpr = None, None
+        roc_auc = float('nan')
     
     # Weighted F1
     weighted_f1 = f1_score(all_labels, all_preds, average='weighted')
@@ -273,10 +302,6 @@ def test_model(model, test_loader, test_df, device):
     
     # Confusion matrix
     cm = confusion_matrix(all_labels, all_preds)
-    
-    # ROC curve
-    fpr, tpr, _ = roc_curve(all_labels, all_logits[:, 1])
-    roc_auc = auc(fpr, tpr)
     
     metrics = {
         'Macro-AUC': macro_auc,
@@ -311,19 +336,22 @@ def test_model(model, test_loader, test_df, device):
     plt.savefig('confusion_matrix.png', dpi=300)
     print("Confusion matrix saved to confusion_matrix.png")
     
-    # Plot ROC curve
-    plt.figure(figsize=(8, 6))
-    plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc:.4f})')
-    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Random Classifier')
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC Curve - CRC-MSI Classification')
-    plt.legend(loc="lower right")
-    plt.tight_layout()
-    plt.savefig('roc_curve.png', dpi=300)
-    print("ROC curve saved to roc_curve.png")
+    # Plot ROC curve (only if both classes present)
+    if fpr is not None and tpr is not None:
+        plt.figure(figsize=(8, 6))
+        plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc:.4f})')
+        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Random Classifier')
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('ROC Curve - CRC-MSI Classification')
+        plt.legend(loc="lower right")
+        plt.tight_layout()
+        plt.savefig('roc_curve.png', dpi=300)
+        print("ROC curve saved to roc_curve.png")
+    else:
+        print("Skipping ROC curve: only one class present in test set.")
     
     return metrics, all_logits, all_labels, all_paths, cm, fpr, tpr
 
@@ -419,9 +447,14 @@ def main():
     print("\nGenerating heatmaps...")
     generate_heatmaps(model, target_images, '/jhcnas7/Pathology/PathLab_data_collection/Data/CRC-MSI/CRC-MSI', device)
     
-    # Save metrics
+    # Save metrics (handle NaN values for JSON compliance)
+    import math
+    safe_metrics = {}
+    for k, v in metrics.items():
+        val = float(v)
+        safe_metrics[k] = None if math.isnan(val) else val
     with open('metrics.json', 'w') as f:
-        json.dump({k: float(v) for k, v in metrics.items()}, f, indent=2)
+        json.dump(safe_metrics, f, indent=2)
     
     print("\n✓ Task 1 completed!")
 

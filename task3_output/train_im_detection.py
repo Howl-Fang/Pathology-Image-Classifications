@@ -29,6 +29,33 @@ try:
 except ImportError:
     HAS_OPENSLIDE = False
 
+
+def check_wsi_accessibility(data_path):
+    """Pre-flight check: verify OpenSlide and WSI files are accessible."""
+    if not HAS_OPENSLIDE:
+        print("=" * 60)
+        print("WARNING: OpenSlide is not installed!")
+        print("  WSI (.svs) files cannot be read without openslide-python.")
+        print("  The model will receive blank images and learn nothing.")
+        print()
+        print("  Install OpenSlide:")
+        print("    Ubuntu: sudo apt-get install libopenslide0")
+        print("    then:   pip install openslide-python")
+        print("=" * 60)
+        return False
+    
+    wsi_dir = os.path.join(data_path, 'PWH', 'WSIs')
+    if os.path.isdir(wsi_dir):
+        for f in os.listdir(wsi_dir):
+            if f.endswith('.svs'):
+                return True
+    
+    print("=" * 60)
+    print(f"WARNING: No .svs files found in {wsi_dir}")
+    print("  Without WSI files, training will use blank images.")
+    print("=" * 60)
+    return False
+
 class IMDetectionDataset(Dataset):
     def __init__(self, df, data_path, transform=None):
         self.df = df
@@ -56,11 +83,16 @@ class IMDetectionDataset(Dataset):
         else:
             label_str = 'nonIM'
         
-        # Get filename
-        if 'filename' in row:
-            filename = row['filename']
-        else:
-            filename = row.get('file_name', '')
+        # Get filename - try multiple common column names
+        filename = ''
+        for col in ['filename', 'file_name', 'slide_id', 'slide', 'id', 'name']:
+            if col in row.index and pd.notna(row[col]):
+                filename = str(row[col])
+                break
+        
+        if not filename:
+            # Last resort: use index as identifier
+            filename = f'sample_{idx}'
         
         wsi_path = os.path.join(self.data_path, 'WSIs', filename)
         
@@ -90,35 +122,71 @@ class IMDetectionDataset(Dataset):
         return image, label, filename
 
 def load_pwh_data(data_path):
-    """Load PWH dataset"""
+    """Load PWH dataset with automatic column detection"""
     csv_path = os.path.join(data_path, 'PWH', 'label.csv')
     df = pd.read_csv(csv_path)
-    if 'label' in df.columns:
+    
+    # Print column names for diagnostics
+    print(f"CSV columns: {list(df.columns)}")
+    
+    # Auto-detect and normalize label column
+    label_col = None
+    for candidate in ['label', 'Label', 'class', 'Class', 'category']:
+        if candidate in df.columns:
+            label_col = candidate
+            break
+    
+    if label_col is None:
+        raise ValueError(f"Cannot find label column in CSV. Columns: {list(df.columns)}")
+    
+    # Rename to 'label' for consistency
+    if label_col != 'label':
+        df['label'] = df[label_col].map(normalize_text)
+        print(f"Detected label column: '{label_col}' → mapped to 'label'")
+    else:
         df['label'] = df['label'].map(normalize_text)
     
-    # Map label column names
-    if 'label' in df.columns:
-        df = df[df['label'].isin(['Intestinal metaplasia', 'Not Intestinal metaplasia'])]
+    # Filter valid classes
+    df = df[df['label'].isin(['Intestinal metaplasia', 'Not Intestinal metaplasia'])].reset_index(drop=True)
+    
+    # Auto-detect and normalize filename/slide column
+    file_col = None
+    for candidate in ['filename', 'file_name', 'slide', 'Slide', 'slide_id', 'id', 'name']:
+        if candidate in df.columns:
+            file_col = candidate
+            break
+    
+    if file_col and file_col != 'filename':
+        df['filename'] = df[file_col]
+        print(f"Detected filename column: '{file_col}' → mapped to 'filename'")
     
     print(f"Total PWH samples: {len(df)}")
-    if len(df) > 0 and 'label' in df.columns:
-        print(f"Class distribution:\n{df['label'].value_counts()}")
+    print(f"Class distribution:\n{df['label'].value_counts()}")
     
     return df
 
 def create_dataloaders(df, data_path, batch_size=32):
-    """Create dataloaders"""
+    """Create dataloaders with stratified sampling"""
     
-    # Split into train, val, test
+    # Detect label column for stratification
+    label_col = 'label' if 'label' in df.columns else None
+    
+    # Split into train, val, test with stratification
     train_split, test_split = train_test_split(
-        df, test_size=0.3, random_state=42
+        df, test_size=0.3, random_state=42,
+        stratify=df[label_col] if label_col else None
     )
     
     train_split, val_split = train_test_split(
-        train_split, test_size=0.2, random_state=42
+        train_split, test_size=0.2, random_state=42,
+        stratify=train_split[label_col] if label_col else None
     )
     
     print(f"Train: {len(train_split)}, Val: {len(val_split)}, Test: {len(test_split)}")
+    if label_col:
+        print(f"Train class dist:\n{train_split[label_col].value_counts()}")
+        print(f"Val class dist:\n{val_split[label_col].value_counts()}")
+        print(f"Test class dist:\n{test_split[label_col].value_counts()}")
     
     train_transform = transforms.Compose([
         transforms.Resize((256, 256)),
@@ -196,9 +264,13 @@ def validate(model, val_loader, criterion, device):
     accuracy = accuracy_score(all_labels, all_preds)
     return total_loss / len(val_loader), accuracy
 
-def train_model(model, train_loader, val_loader, epochs=20, device='cuda'):
-    """Train the model"""
-    criterion = nn.CrossEntropyLoss()
+def train_model(model, train_loader, val_loader, epochs=20, device='cuda', class_weights=None):
+    """Train the model with optional class weights for imbalance"""
+    if class_weights is not None:
+        criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
+        print(f"Using class weights: {class_weights.tolist()}")
+    else:
+        criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
     
@@ -253,13 +325,22 @@ def test_model(model, test_loader, device):
     all_logits = np.array(all_logits)
     all_labels = np.array(all_labels)
     
-    # Calculate metrics
-    macro_auc = roc_auc_score(all_labels, all_logits[:, 1])
+    n_unique_labels = len(np.unique(all_labels))
+    
+    # Calculate metrics (with NaN safety for single-class case)
+    if n_unique_labels >= 2:
+        macro_auc = roc_auc_score(all_labels, all_logits[:, 1])
+        fpr, tpr, _ = roc_curve(all_labels, all_logits[:, 1])
+        roc_auc = auc(fpr, tpr)
+    else:
+        print(f"WARNING: Only {n_unique_labels} class(es) in test set, cannot compute AUC metrics.")
+        macro_auc = float('nan')
+        fpr, tpr = None, None
+        roc_auc = float('nan')
+    
     weighted_f1 = f1_score(all_labels, all_preds, average='weighted')
     macro_acc = accuracy_score(all_labels, all_preds)
     cm = confusion_matrix(all_labels, all_preds)
-    fpr, tpr, _ = roc_curve(all_labels, all_logits[:, 1])
-    roc_auc = auc(fpr, tpr)
     
     metrics = {
         'Macro-AUC': macro_auc,
@@ -293,19 +374,22 @@ def test_model(model, test_loader, device):
     plt.savefig('confusion_matrix.png', dpi=300)
     print("Confusion matrix saved to confusion_matrix.png")
     
-    # Plot ROC curve
-    plt.figure(figsize=(8, 6))
-    plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc:.4f})')
-    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Random Classifier')
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC Curve - Intestinal Metaplasia Detection')
-    plt.legend(loc="lower right")
-    plt.tight_layout()
-    plt.savefig('roc_curve.png', dpi=300)
-    print("ROC curve saved to roc_curve.png")
+    # Plot ROC curve (only if both classes present)
+    if fpr is not None and tpr is not None:
+        plt.figure(figsize=(8, 6))
+        plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc:.4f})')
+        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Random Classifier')
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('ROC Curve - Intestinal Metaplasia Detection')
+        plt.legend(loc="lower right")
+        plt.tight_layout()
+        plt.savefig('roc_curve.png', dpi=300)
+        print("ROC curve saved to roc_curve.png")
+    else:
+        print("Skipping ROC curve: only one class present in test set.")
     
     return metrics, all_logits, all_labels, all_paths, cm, fpr, tpr
 
@@ -314,6 +398,9 @@ def main():
     print(f"Using device: {device}")
     
     data_path = '/jhcnas7/Pathology/PathLab_data_collection/Data/GC_IM_Detection'
+    
+    # Pre-flight: check WSI accessibility
+    check_wsi_accessibility(data_path)
     
     # Load data
     print("Loading PWH dataset...")
@@ -326,20 +413,36 @@ def main():
     # Create dataloaders
     train_loader, val_loader, test_loader = create_dataloaders(df, data_path, batch_size=32)
     
+    # Compute class weights for imbalanced dataset
+    label_col = 'label' if 'label' in df.columns else None
+    if label_col:
+        class_counts = df[label_col].value_counts().sort_index()
+        # Inverse frequency weighting
+        weights = 1.0 / torch.tensor(class_counts.values, dtype=torch.float32)
+        weights = weights / weights.sum() * len(class_counts)  # normalize
+        print(f"Computed class weights: {weights.tolist()}")
+    else:
+        weights = None
+    
     # Build and train model
     model = build_model().to(device)
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
     
     print("\nTraining model on PWH...")
-    model = train_model(model, train_loader, val_loader, epochs=20, device=device)
+    model = train_model(model, train_loader, val_loader, epochs=20, device=device, class_weights=weights)
     
     # Test model
     print("\nTesting model...")
     metrics, all_logits, all_labels, all_paths, cm, fpr, tpr = test_model(model, test_loader, device)
     
-    # Save metrics
+    # Save metrics (handle NaN values for JSON compliance)
+    import math
+    safe_metrics = {}
+    for k, v in metrics.items():
+        val = float(v)
+        safe_metrics[k] = None if math.isnan(val) else val
     with open('metrics.json', 'w') as f:
-        json.dump({k: float(v) for k, v in metrics.items()}, f, indent=2)
+        json.dump(safe_metrics, f, indent=2)
     
     print("\n✓ Task 3 completed!")
 
