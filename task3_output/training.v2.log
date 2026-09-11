@@ -16,33 +16,38 @@ Train: 1509  |  Val: 378  |  Test: 810
 ==================================================
 STAGE 1: Feature Pre-extraction
 ==================================================
-
-Pre-extracting features to /home/student/First try/task3_output/features_cache/train...
-Features extracted: 1509 slides saved
-
-Pre-extracting features to /home/student/First try/task3_output/features_cache/val...
-Features extracted: 378 slides saved
-
-Pre-extracting features to /home/student/First try/task3_output/features_cache/test...
-Features extracted: 810 slides saved
+All 1509 slides already cached, skipping extraction.
+All 378 slides already cached, skipping extraction.
+All 810 slides already cached, skipping extraction.
 
 ==================================================
 STAGE 2: Attention MIL Training
 ==================================================
-MIL parameters: 2,099,459
+MIL parameters: 2,234,371
 Class weights: nonIM=0.556, IM=4.997
-Epoch  1/50 | Train Loss: 0.6321 | Train Acc: 0.8813 | Val Loss: 0.6331 | Val Acc: 0.8995 | Val AUC: 0.6238 | LR: 1.00e-04
-Epoch  2/50 | Train Loss: 0.5452 | Train Acc: 0.8999 | Val Loss: 0.7081 | Val Acc: 0.8995 | Val AUC: 0.5680 | LR: 1.00e-04
-Epoch  3/50 | Train Loss: 0.4899 | Train Acc: 0.9005 | Val Loss: 0.7183 | Val Acc: 0.8995 | Val AUC: 0.6033 | LR: 1.00e-04
-Epoch  4/50 | Train Loss: 0.3886 | Train Acc: 0.9463 | Val Loss: 0.8065 | Val Acc: 0.8889 | Val AUC: 0.5452 | LR: 1.00e-04
-Epoch  5/50 | Train Loss: 0.2865 | Train Acc: 0.9549 | Val Loss: 0.9297 | Val Acc: 0.8545 | Val AUC: 0.5024 | LR: 1.00e-04
-Epoch  6/50 | Train Loss: 0.2246 | Train Acc: 0.9655 | Val Loss: 1.0129 | Val Acc: 0.8783 | Val AUC: 0.5621 | LR: 1.00e-04
-Epoch  7/50 | Train Loss: 0.2169 | Train Acc: 0.9635 | Val Loss: 1.2014 | Val Acc: 0.8730 | Val AUC: 0.5210 | LR: 5.00e-05
-Epoch  8/50 | Train Loss: 0.1896 | Train Acc: 0.9682 | Val Loss: 1.3979 | Val Acc: 0.8862 | Val AUC: 0.4865 | LR: 5.00e-05
-Epoch  9/50 | Train Loss: 0.1757 | Train Acc: 0.9728 | Val Loss: 1.4671 | Val Acc: 0.8862 | Val AUC: 0.4940 | LR: 5.00e-05
-Epoch 10/50 | Train Loss: 0.1799 | Train Acc: 0.9735 | Val Loss: 1.5384 | Val Acc: 0.8915 | Val AUC: 0.4753 | LR: 5.00e-05
-Epoch 11/50 | Train Loss: 0.1623 | Train Acc: 0.9715 | Val Loss: 1.5839 | Val Acc: 0.8757 | Val AUC: 0.4486 | LR: 5.00e-05
-Early stopping at epoch 11
+Epoch  1/60 | Train Loss: 0.6473 | Train Acc: 0.8773 | Val Loss: 0.6597 | Val Acc: 0.8995 | Val AUC: 0.6324 | LR: 1.95e-04
+Epoch  2/60 | Train Loss: 0.5703 | Train Acc: 0.8992 | Val Loss: 0.6493 | Val Acc: 0.8995 | Val AUC: 0.6512 | LR: 1.81e-04
+Epoch  3/60 | Train Loss: 0.5124 | Train Acc: 0.9012 | Val Loss: 0.7334 | Val Acc: 0.8995 | Val AUC: 0.5881 | LR: 1.59e-04
+Epoch  4/60 | Train Loss: 0.4702 | Train Acc: 0.9138 | Val Loss: 0.7900 | Val Acc: 0.9021 | Val AUC: 0.5304 | LR: 1.31e-04
+Epoch  5/60 | Train Loss: 0.3806 | Train Acc: 0.9370 | Val Loss: 0.8589 | Val Acc: 0.8651 | Val AUC: 0.5159 | LR: 1.01e-04
+Epoch  6/60 | Train Loss: 0.3147 | Train Acc: 0.9416 | Val Loss: 1.0639 | Val Acc: 0.8836 | Val AUC: 0.5521 | LR: 6.98e-05
+Epoch  7/60 | Train Loss: 0.2427 | Train Acc: 0.9582 | Val Loss: 1.2450 | Val Acc: 0.8889 | Val AUC: 0.4997 | LR: 4.20e-05
+Epoch  8/60 | Train Loss: 0.2424 | Train Acc: 0.9562 | Val Loss: 1.3366 | Val Acc: 0.8889 | Val AUC: 0.4772 | LR: 2.00e-05
+Epoch  9/60 | Train Loss: 0.2150 | Train Acc: 0.9622 | Val Loss: 1.3575 | Val Acc: 0.8915 | Val AUC: 0.4644 | LR: 5.87e-06
+Epoch 10/60 | Train Loss: 0.2059 | Train Acc: 0.9622 | Val Loss: 1.4084 | Val Acc: 0.8783 | Val AUC: 0.4725 | LR: 2.00e-04
+Epoch 11/60 | Train Loss: 0.2561 | Train Acc: 0.9489 | Val Loss: 1.2035 | Val Acc: 0.8889 | Val AUC: 0.5170 | LR: 1.99e-04
+Epoch 12/60 | Train Loss: 0.2474 | Train Acc: 0.9476 | Val Loss: 1.5845 | Val Acc: 0.8995 | Val AUC: 0.5333 | LR: 1.95e-04
+Epoch 13/60 | Train Loss: 0.2650 | Train Acc: 0.9469 | Val Loss: 1.3633 | Val Acc: 0.8942 | Val AUC: 0.5656 | LR: 1.89e-04
+Epoch 14/60 | Train Loss: 0.2652 | Train Acc: 0.9503 | Val Loss: 1.5043 | Val Acc: 0.8915 | Val AUC: 0.4635 | LR: 1.81e-04
+Epoch 15/60 | Train Loss: 0.2340 | Train Acc: 0.9609 | Val Loss: 1.1419 | Val Acc: 0.8598 | Val AUC: 0.5197 | LR: 1.71e-04
+Epoch 16/60 | Train Loss: 0.1924 | Train Acc: 0.9655 | Val Loss: 1.9329 | Val Acc: 0.8942 | Val AUC: 0.4553 | LR: 1.59e-04
+Epoch 17/60 | Train Loss: 0.1789 | Train Acc: 0.9668 | Val Loss: 1.9693 | Val Acc: 0.8968 | Val AUC: 0.5420 | LR: 1.46e-04
+Epoch 18/60 | Train Loss: 0.1889 | Train Acc: 0.9655 | Val Loss: 1.9579 | Val Acc: 0.8942 | Val AUC: 0.4446 | LR: 1.31e-04
+Epoch 19/60 | Train Loss: 0.1759 | Train Acc: 0.9688 | Val Loss: 1.8076 | Val Acc: 0.8862 | Val AUC: 0.5220 | LR: 1.16e-04
+Epoch 20/60 | Train Loss: 0.1925 | Train Acc: 0.9642 | Val Loss: 1.7843 | Val Acc: 0.8968 | Val AUC: 0.5160 | LR: 1.01e-04
+Epoch 21/60 | Train Loss: 0.1810 | Train Acc: 0.9668 | Val Loss: 1.9577 | Val Acc: 0.8995 | Val AUC: 0.4674 | LR: 8.49e-05
+Epoch 22/60 | Train Loss: 0.1861 | Train Acc: 0.9609 | Val Loss: 1.8677 | Val Acc: 0.8915 | Val AUC: 0.4928 | LR: 6.98e-05
+Early stopping at epoch 22
 
 ==================================================
 STAGE 3: PWH Test Set Evaluation
@@ -51,10 +56,10 @@ STAGE 3: PWH Test Set Evaluation
 ==================================================
 === PWH Test Set Performance ===
 ==================================================
-  Macro-AUC: 0.5355
+  Macro-AUC: 0.5562
   Weighted-F1: 0.8526
   Macro-ACC: 0.9000
-  ROC-AUC: 0.5355
+  ROC-AUC: 0.5562
 
 Predictions saved to IM.csv
 Confusion matrix saved to confusion_matrix.png

@@ -48,17 +48,20 @@ CONFIG = {
     'patch_size': 256,
     'resize_size': 224,
     'n_total_patches': 128,
-    'n_bag_size': 64,
+    'n_bag_size': 96,
     'tissue_threshold': 220,
     'feature_dim': 2048,
     'hidden_dim': 256,
+    'att_dropout': 0.3,
+    'inst_dropout': 0.2,
     'batch_size': 4,
-    'epochs': 50,
-    'lr': 1e-4,
-    'weight_decay': 1e-4,
-    'patience': 10,
+    'epochs': 60,
+    'lr': 2e-4,
+    'weight_decay': 2e-4,
+    'patience': 20,
     'num_workers': 4,
     'feature_cache_dir': '/home/student/First try/task3_output/features_cache',
+    'color_jitter': {'brightness': 0.3, 'contrast': 0.3, 'saturation': 0.2, 'hue': 0.05},
 }
 
 
@@ -117,110 +120,155 @@ def build_feature_extractor(device):
 
 
 # ============================================================================
-# Gated Attention MIL
+# Gated Attention MIL (with LayerNorm + dropout regularization)
 # ============================================================================
 class GatedAttentionMIL(nn.Module):
-    def __init__(self, input_dim=2048, hidden_dim=256, num_classes=2):
+    def __init__(self, input_dim=2048, hidden_dim=256, num_classes=2, att_dropout=0.3):
         super().__init__()
+        self.norm = nn.LayerNorm(input_dim)
         self.attention_V = nn.Linear(input_dim, hidden_dim)
         self.attention_U = nn.Linear(input_dim, hidden_dim)
         self.attention_w = nn.Linear(hidden_dim, 1)
+        self.att_dropout = nn.Dropout(att_dropout)
         self.classifier = nn.Sequential(
             nn.Linear(input_dim, 512),
             nn.ReLU(),
-            nn.Dropout(0.25),
-            nn.Linear(512, num_classes),
+            nn.Dropout(0.5),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(256, num_classes),
         )
 
-    def forward(self, features):
-        V = torch.tanh(self.attention_V(features))
-        U = torch.sigmoid(self.attention_U(features))
+    def forward(self, features, inst_dropout=0.0):
+        B, N, D = features.shape
+        if inst_dropout > 0 and self.training:
+            mask = torch.rand(B, N, 1, device=features.device) > inst_dropout
+            features = features * mask
+
+        features_norm = self.norm(features)
+        V = torch.tanh(self.attention_V(features_norm))
+        U = torch.sigmoid(self.attention_U(features_norm))
         A = self.attention_w(V * U)
+        A = self.att_dropout(A)
         A = torch.softmax(A, dim=1)
-        aggregated = torch.sum(A * features, dim=1)
+        aggregated = torch.sum(A * features_norm, dim=1)
         logits = self.classifier(aggregated)
         return logits, A
 
 
 # ============================================================================
-# Stage 1: Feature Pre-extraction
+# Stage 1: Feature Pre-extraction (Parallel I/O + Batched GPU)
 # ============================================================================
-def extract_features_for_slide(slide_path, feature_extractor, device, transform):
-    if not HAS_OPENSLIDE:
-        return None
-
-    try:
-        slide = openslide.open_slide(slide_path)
-    except Exception:
-        return None
-
-    n_patches = CONFIG['n_total_patches']
+def _read_slide_patches(slide_path, n_patches, patch_size):
+    """Worker: read all patches from one WSI, return uint8 numpy array."""
+    slide = openslide.open_slide(slide_path)
     coords = grid_patch_coords(slide, n_patches)
-
-    features_list = []
-    micro_batch = 64
-    for i in range(0, len(coords), micro_batch):
-        batch_coords = coords[i:i + micro_batch]
-        patches = []
-        for x, y, level in batch_coords:
-            try:
-                patch = slide.read_region((x, y), level, (CONFIG['patch_size'], CONFIG['patch_size']))
-                patch = patch.convert('RGB')
-                patches.append(patch)
-            except Exception:
-                continue
-        if not patches:
+    patches = []
+    for x, y, level in coords:
+        try:
+            patch = slide.read_region((x, y), level, (patch_size, patch_size))
+            patches.append(np.array(patch.convert('RGB'), dtype=np.uint8))
+        except Exception:
             continue
-        patch_tensors = torch.stack([transform(p) for p in patches]).to(device)
-        with torch.no_grad():
-            feats = feature_extractor(patch_tensors)
-        features_list.append(feats.cpu())
-
     slide.close()
-
-    if features_list:
-        features = torch.cat(features_list, dim=0)
-        return features
+    if len(patches) >= n_patches // 2:
+        return np.stack(patches)
     return None
 
 
 def pre_extract_all_features(df, data_path, feature_extractor, device, cache_dir):
+    """Parallel WSI reading + batched GPU feature extraction."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     os.makedirs(cache_dir, exist_ok=True)
+
     transform = transforms.Compose([
         transforms.Resize((CONFIG['resize_size'], CONFIG['resize_size'])),
+        transforms.ColorJitter(**CONFIG['color_jitter']),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                            std=[0.229, 0.224, 0.225]),
     ])
+
     wsi_dir = os.path.join(data_path, 'WSIs')
     feature_files = {}
 
-    print(f"\nPre-extracting features to {cache_dir}...")
-    for idx, row in tqdm(df.iterrows(), total=len(df), desc="Extracting features"):
+    to_extract = []
+    for idx, row in df.iterrows():
         slide_name = row['filename']
-        slide_path = os.path.join(wsi_dir, slide_name)
         cache_path = os.path.join(cache_dir, os.path.basename(slide_name) + '.pt')
-
         if os.path.exists(cache_path):
             feature_files[slide_name] = cache_path
-            continue
-
-        result = extract_features_for_slide(slide_path, feature_extractor, device, transform)
-        if result is None or result.shape[0] < CONFIG['n_bag_size']:
-            actual = result.shape[0] if result is not None else 0
-            if result is None:
-                print(f"  WARNING: Could not extract for {slide_name}, using random features")
-            else:
-                print(f"  WARNING: Only {actual} patches for {slide_name}, padding")
-            features = torch.randn(CONFIG['n_total_patches'], CONFIG['feature_dim'])
         else:
-            features = result
+            to_extract.append((slide_name, os.path.join(wsi_dir, slide_name), cache_path))
 
-        torch.save(features, cache_path)
-        feature_files[slide_name] = cache_path
+    if not to_extract:
+        print(f"All {len(feature_files)} slides already cached, skipping extraction.")
+        return feature_files
+
+    n_workers = min(8, len(to_extract))
+    print(f"\nPre-extracting features: {len(to_extract)} slides ({len(feature_files)} cached)")
+    print(f"  Workers: {n_workers} threads  |  GPU batch: 256 patches")
+
+    pending_names = []
+    pending_patches = []
+
+    with ThreadPoolExecutor(max_workers=n_workers) as executor:
+        future_map = {
+            executor.submit(_read_slide_patches, path, CONFIG['n_total_patches'], CONFIG['patch_size']): (name, cache)
+            for name, path, cache in to_extract
+        }
+
+        for future in tqdm(as_completed(future_map), total=len(to_extract), desc="Reading WSIs"):
+            name, cache_path = future_map[future]
+            patches_np = future.result()
+
+            if patches_np is None:
+                print(f"  WARNING: {name} too few tissue patches, using random")
+                torch.save(torch.randn(CONFIG['n_total_patches'], CONFIG['feature_dim']), cache_path)
+                feature_files[name] = cache_path
+                continue
+
+            tensors = []
+            for p in patches_np:
+                tensors.append(transform(Image.fromarray(p)))
+            bag = torch.stack(tensors)
+
+            pending_names.append((name, cache_path, bag.shape[0]))
+            pending_patches.append(bag)
+
+            if sum(p.shape[0] for p in pending_patches) >= 256:
+                _gpu_infer_and_save(pending_patches, pending_names,
+                                    feature_extractor, device, feature_files)
+                pending_patches = []
+                pending_names = []
+
+    if pending_patches:
+        _gpu_infer_and_save(pending_patches, pending_names,
+                            feature_extractor, device, feature_files)
 
     print(f"Features extracted: {len(feature_files)} slides saved")
     return feature_files
+
+
+def _gpu_infer_and_save(pending_patches, pending_names, feature_extractor, device, feature_files):
+    """Run GPU inference on accumulated patches and save per-slide features."""
+    all_patches = torch.cat(pending_patches, dim=0).to(device)
+    micro = 128
+    all_feats = []
+    for i in range(0, all_patches.shape[0], micro):
+        batch = all_patches[i:i + micro]
+        with torch.no_grad():
+            feats = feature_extractor(batch)
+        all_feats.append(feats.cpu())
+    all_feats = torch.cat(all_feats, dim=0)
+
+    offset = 0
+    for name, cache_path, n_patches in pending_names:
+        feats = all_feats[offset:offset + n_patches]
+        offset += n_patches
+        torch.save(feats, cache_path)
+        feature_files[name] = cache_path
 
 
 # ============================================================================
@@ -249,10 +297,10 @@ class MILDataset(Dataset):
             features = torch.load(cache_path, weights_only=True)
 
         n_available = features.shape[0]
-        if n_available <= self.bag_size:
-            indices = torch.arange(n_available)
-        else:
+        if n_available >= self.bag_size:
             indices = torch.randperm(n_available)[:self.bag_size]
+        else:
+            indices = torch.randint(0, n_available, (self.bag_size,))
 
         bag = features[indices]
         if self.augment:
@@ -263,7 +311,7 @@ class MILDataset(Dataset):
 # ============================================================================
 # Training & Evaluation
 # ============================================================================
-def train_epoch_mil(model, dataloader, optimizer, criterion, device):
+def train_epoch_mil(model, dataloader, optimizer, criterion, device, inst_dropout=0.0):
     model.train()
     total_loss = 0
     all_preds = []
@@ -271,7 +319,7 @@ def train_epoch_mil(model, dataloader, optimizer, criterion, device):
     for features, labels, _ in tqdm(dataloader, desc='Training', leave=False):
         features, labels = features.to(device), labels.to(device)
         optimizer.zero_grad()
-        logits, _ = model(features)
+        logits, _ = model(features, inst_dropout=inst_dropout)
         loss = criterion(logits, labels)
         loss.backward()
         optimizer.step()
@@ -510,6 +558,7 @@ def main():
         input_dim=CONFIG['feature_dim'],
         hidden_dim=CONFIG['hidden_dim'],
         num_classes=2,
+        att_dropout=CONFIG['att_dropout'],
     ).to(device)
     print(f"MIL parameters: {sum(p.numel() for p in mil_model.parameters()):,}")
 
@@ -524,8 +573,8 @@ def main():
     criterion = nn.CrossEntropyLoss(weight=class_weights)
     optimizer = optim.AdamW(mil_model.parameters(), lr=CONFIG['lr'],
                              weight_decay=CONFIG['weight_decay'])
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='max', factor=0.5, patience=5, min_lr=1e-6
+    scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        optimizer, T_0=10, T_mult=2, eta_min=1e-6
     )
 
     best_val_auc = 0
@@ -534,9 +583,10 @@ def main():
 
     for epoch in range(CONFIG['epochs']):
         train_loss, train_acc = train_epoch_mil(mil_model, train_loader,
-                                                  optimizer, criterion, device)
+                                                  optimizer, criterion, device,
+                                                  inst_dropout=CONFIG['inst_dropout'])
         val_metrics = validate_mil(mil_model, val_loader, criterion, device)
-        scheduler.step(val_metrics['val_auc'])
+        scheduler.step()
 
         current_lr = optimizer.param_groups[0]['lr']
         print(f"Epoch {epoch+1:2d}/{CONFIG['epochs']} | "
