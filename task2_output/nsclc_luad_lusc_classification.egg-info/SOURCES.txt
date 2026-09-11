@@ -1,9 +1,0 @@
-README.md
-pyproject.toml
-train_nsclc.py
-nsclc_luad_lusc_classification.egg-info/PKG-INFO
-nsclc_luad_lusc_classification.egg-info/SOURCES.txt
-nsclc_luad_lusc_classification.egg-info/dependency_links.txt
-nsclc_luad_lusc_classification.egg-info/entry_points.txt
-nsclc_luad_lusc_classification.egg-info/requires.txt
-nsclc_luad_lusc_classification.egg-info/top_level.txt

@@ -1,2 +1,0 @@
-[console_scripts]
-train = train_im_detection:main
