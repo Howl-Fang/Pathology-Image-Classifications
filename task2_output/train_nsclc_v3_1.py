@@ -1,14 +1,10 @@
 """
-Task 2: LUAD vs LUSC Classification (v3.1 — Virchow2 + Multi-head MIL)
-========================================================================
-Improvements over v3:
-  1. Multi-head gated attention (4 heads, attend to different morphologies)
-  2. bag_size 256 → 1024 (better tissue coverage)
-  3. Gradient accumulation (batch=1 × 4 steps = effective batch=4)
-  4. Test-time multi-bag averaging (8 bags per slide → stable predictions)
+Task 2: LUAD vs LUSC Classification (v3.2)
+===========================================
+v3.1 + full-patch chunked inference (no random sampling at test time)
 """
 
-import os, json, random, math
+import os, json, math
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -38,16 +34,13 @@ CONFIG = {
     'att_dropout':   0.3,
     'inst_dropout':  0.15,
 
-    'batch_size':       1,     # one slide per forward pass
-    'accum_steps':      4,     # gradient accumulation steps
+    'batch_size':       4,
+    'accum_steps':      1,
     'epochs':           30,
     'lr':               1e-4,
     'weight_decay':     5e-4,
     'patience':         12,
     'num_workers':      4,
-
-    # Test-time: average predictions over N random bags
-    'test_bags':        8,
 }
 
 
@@ -211,19 +204,6 @@ def load_data(base, name):
 
 
 # ============================================================================
-# Helper: sample a bag from full features
-# ============================================================================
-def _sample_bag(full_features, bag_size, device):
-    """Given (N, D) tensor, sample bag_size patches randomly."""
-    N = full_features.shape[0]
-    if N >= bag_size:
-        idx = torch.randperm(N, device=device)[:bag_size]
-    else:
-        idx = torch.randint(0, N, (bag_size,), device=device)
-    return full_features[idx]
-
-
-# ============================================================================
 # Training with gradient accumulation
 # ============================================================================
 def train_epoch(model, dataloader, optimizer, criterion, device,
@@ -277,27 +257,30 @@ def validate(model, dataloader, criterion, device):
 
 
 @torch.no_grad()
-def test_model(model, dataloader, device, test_bags=8):
-    """Test with multi-bag averaging. dataloader must use return_all=True."""
+def test_model(model, dataloader, device):
+    """Full-patch inference: split all patches into non-overlapping chunks of
+    bag_size, get logits per chunk, average. No random sampling."""
     model.eval()
     all_preds, all_logits, all_labels, all_paths = [], [], [], []
+    bag_size = CONFIG['bag_size']
 
     for full_features, labels, slide_names in tqdm(dataloader, desc='Test', leave=False):
         full = full_features.to(device)  # (1, N, D)
         labels = labels.to(device)
-        B, N, D = full.shape
-        bag_size = CONFIG['bag_size']
+        N = full.shape[1]
 
-        bag_logits = []
-        for _ in range(test_bags):
-            all_bags = []
-            for b in range(B):
-                bag = _sample_bag(full[b], bag_size, device)
-                all_bags.append(bag)
-            batch = torch.stack(all_bags, dim=0)
-            logits, _ = model(batch)
-            bag_logits.append(logits)
-        logits = torch.stack(bag_logits).mean(dim=0)
+        # Split into non-overlapping chunks, pad last chunk to bag_size
+        chunk_logits = []
+        for start in range(0, N, bag_size):
+            chunk = full[:, start:start + bag_size, :]  # (1, <=bag_size, D)
+            csize = chunk.shape[1]
+            if csize < bag_size:
+                # Pad with random resampling to keep exact bag_size
+                extra = full[:, torch.randint(0, N, (bag_size - csize,), device=device), :]
+                chunk = torch.cat([chunk, extra], dim=1)
+            logits, _ = model(chunk)
+            chunk_logits.append(logits)
+        logits = torch.stack(chunk_logits).mean(dim=0)
 
         probs = torch.softmax(logits, dim=1)
         _, preds = torch.max(logits, 1)
@@ -442,8 +425,8 @@ def main():
     ckpt = torch.load('best_model.pth', weights_only=True)
     model.load_state_dict(ckpt['model'])
 
-    print(f"\n{'='*50}\nNanfang Test ({CONFIG['test_bags']}-bag avg)\n{'='*50}")
-    metrics = test_model(model, test_loader, device, test_bags=CONFIG['test_bags'])
+    print(f"\n{'='*50}\nNanfang Test (full-patch chunked)\n{'='*50}")
+    metrics = test_model(model, test_loader, device)
 
     safe = {k: None if math.isnan(float(v)) else float(v) for k, v in metrics.items()}
     json.dump(safe, open('metrics.json', 'w'), indent=2)
