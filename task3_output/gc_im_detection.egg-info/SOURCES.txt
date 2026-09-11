@@ -1,9 +1,9 @@
 README.md
 pyproject.toml
 train_im_detection.py
-train_im_detection_fixed.py
 gc_im_detection.egg-info/PKG-INFO
 gc_im_detection.egg-info/SOURCES.txt
 gc_im_detection.egg-info/dependency_links.txt
+gc_im_detection.egg-info/entry_points.txt
 gc_im_detection.egg-info/requires.txt
 gc_im_detection.egg-info/top_level.txt

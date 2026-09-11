@@ -1,0 +1,2 @@
+[console_scripts]
+train = train_crc_msi_fixed:main

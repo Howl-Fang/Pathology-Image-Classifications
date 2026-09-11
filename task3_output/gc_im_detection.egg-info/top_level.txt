@@ -1,2 +1,1 @@
 train_im_detection
-train_im_detection_fixed

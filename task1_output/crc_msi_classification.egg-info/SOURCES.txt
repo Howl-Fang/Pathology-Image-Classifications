@@ -1,0 +1,10 @@
+README.md
+pyproject.toml
+train_crc_msi.py
+train_crc_msi_fixed.py
+crc_msi_classification.egg-info/PKG-INFO
+crc_msi_classification.egg-info/SOURCES.txt
+crc_msi_classification.egg-info/dependency_links.txt
+crc_msi_classification.egg-info/entry_points.txt
+crc_msi_classification.egg-info/requires.txt
+crc_msi_classification.egg-info/top_level.txt

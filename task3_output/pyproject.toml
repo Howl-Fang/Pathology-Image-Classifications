@@ -21,5 +21,8 @@ dependencies = [
 requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[project.scripts]
+train = "train_im_detection:main"
+
 [tool.setuptools]
-py-modules = ["train_im_detection", "train_im_detection_fixed"]
+py-modules = ["train_im_detection"]
