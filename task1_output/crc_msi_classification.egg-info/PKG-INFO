@@ -1,7 +1,7 @@
 Metadata-Version: 2.4
 Name: crc-msi-classification
 Version: 0.1.0
-Summary: CRC-MSI histological image classification using deep learning
+Summary: CRC-MSI histological image classification
 Requires-Python: >=3.8
 Requires-Dist: torch>=2.0.0
 Requires-Dist: torchvision>=0.15.0
