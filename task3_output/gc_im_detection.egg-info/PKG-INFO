@@ -14,3 +14,4 @@ Requires-Dist: pillow>=8.0.0
 Requires-Dist: opencv-python>=4.5.0
 Requires-Dist: tqdm>=4.50.0
 Requires-Dist: openslide-python>=1.1.2
+Requires-Dist: openslide-bin>=4.0.0.8

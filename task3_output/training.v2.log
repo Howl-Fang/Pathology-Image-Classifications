@@ -1,0 +1,65 @@
+Using device: cuda
+GPU: NVIDIA GeForce RTX 3090 (23 GB)
+
+Loading PWH dataset...
+CSV columns: ['dataset', 'case', 'slide', 'class']
+  Mapped 'class' -> 'label'
+  Mapped 'slide' -> 'filename'
+Total PWH samples: 2697
+Class distribution:
+label
+Not Intestinal metaplasia    2427
+Intestinal metaplasia         270
+Name: count, dtype: int64
+Train: 1509  |  Val: 378  |  Test: 810
+
+==================================================
+STAGE 1: Feature Pre-extraction
+==================================================
+
+Pre-extracting features to /home/student/First try/task3_output/features_cache/train...
+Features extracted: 1509 slides saved
+
+Pre-extracting features to /home/student/First try/task3_output/features_cache/val...
+Features extracted: 378 slides saved
+
+Pre-extracting features to /home/student/First try/task3_output/features_cache/test...
+Features extracted: 810 slides saved
+
+==================================================
+STAGE 2: Attention MIL Training
+==================================================
+MIL parameters: 2,099,459
+Class weights: nonIM=0.556, IM=4.997
+Epoch  1/50 | Train Loss: 0.6321 | Train Acc: 0.8813 | Val Loss: 0.6331 | Val Acc: 0.8995 | Val AUC: 0.6238 | LR: 1.00e-04
+Epoch  2/50 | Train Loss: 0.5452 | Train Acc: 0.8999 | Val Loss: 0.7081 | Val Acc: 0.8995 | Val AUC: 0.5680 | LR: 1.00e-04
+Epoch  3/50 | Train Loss: 0.4899 | Train Acc: 0.9005 | Val Loss: 0.7183 | Val Acc: 0.8995 | Val AUC: 0.6033 | LR: 1.00e-04
+Epoch  4/50 | Train Loss: 0.3886 | Train Acc: 0.9463 | Val Loss: 0.8065 | Val Acc: 0.8889 | Val AUC: 0.5452 | LR: 1.00e-04
+Epoch  5/50 | Train Loss: 0.2865 | Train Acc: 0.9549 | Val Loss: 0.9297 | Val Acc: 0.8545 | Val AUC: 0.5024 | LR: 1.00e-04
+Epoch  6/50 | Train Loss: 0.2246 | Train Acc: 0.9655 | Val Loss: 1.0129 | Val Acc: 0.8783 | Val AUC: 0.5621 | LR: 1.00e-04
+Epoch  7/50 | Train Loss: 0.2169 | Train Acc: 0.9635 | Val Loss: 1.2014 | Val Acc: 0.8730 | Val AUC: 0.5210 | LR: 5.00e-05
+Epoch  8/50 | Train Loss: 0.1896 | Train Acc: 0.9682 | Val Loss: 1.3979 | Val Acc: 0.8862 | Val AUC: 0.4865 | LR: 5.00e-05
+Epoch  9/50 | Train Loss: 0.1757 | Train Acc: 0.9728 | Val Loss: 1.4671 | Val Acc: 0.8862 | Val AUC: 0.4940 | LR: 5.00e-05
+Epoch 10/50 | Train Loss: 0.1799 | Train Acc: 0.9735 | Val Loss: 1.5384 | Val Acc: 0.8915 | Val AUC: 0.4753 | LR: 5.00e-05
+Epoch 11/50 | Train Loss: 0.1623 | Train Acc: 0.9715 | Val Loss: 1.5839 | Val Acc: 0.8757 | Val AUC: 0.4486 | LR: 5.00e-05
+Early stopping at epoch 11
+
+==================================================
+STAGE 3: PWH Test Set Evaluation
+==================================================
+
+==================================================
+=== PWH Test Set Performance ===
+==================================================
+  Macro-AUC: 0.5355
+  Weighted-F1: 0.8526
+  Macro-ACC: 0.9000
+  ROC-AUC: 0.5355
+
+Predictions saved to IM.csv
+Confusion matrix saved to confusion_matrix.png
+ROC curve saved to roc_curve.png
+
+==================================================
+Task 3 (v2 MIL) completed!
+==================================================

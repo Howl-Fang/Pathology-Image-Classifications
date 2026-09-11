@@ -1,6 +1,7 @@
 README.md
 pyproject.toml
 train_nsclc.py
+train_nsclc_v2.py
 nsclc_luad_lusc_classification.egg-info/PKG-INFO
 nsclc_luad_lusc_classification.egg-info/SOURCES.txt
 nsclc_luad_lusc_classification.egg-info/dependency_links.txt

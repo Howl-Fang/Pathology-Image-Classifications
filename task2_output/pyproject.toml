@@ -22,7 +22,7 @@ requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project.scripts]
-train = "train_nsclc:main"
+train = "train_nsclc_v2:main"
 
 [tool.setuptools]
-py-modules = ["train_nsclc"]
+py-modules = ["train_nsclc", "train_nsclc_v2"]

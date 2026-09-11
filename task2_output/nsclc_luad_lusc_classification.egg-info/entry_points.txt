@@ -1,2 +1,2 @@
 [console_scripts]
-train = train_nsclc:main
+train = train_nsclc_v2:main
